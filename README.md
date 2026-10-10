@@ -75,7 +75,8 @@ pip install -r requirements.txt
 cp .env.example .env          # then put your key in .env: ANTHROPIC_API_KEY=...
 
 # Reality Test / any new cases (everything in the folder is visible to the agent)
-python run.py "/path/to/HackatonChallendges/Delivery & Logistics" --out ANSWERS
+./reality.sh "/path/to/HackatonChallendges/Delivery & Logistics"      # resumable; see RUNBOOK.md
+python run.py "/path/to/HackatonChallendges/Delivery & Logistics" --out ANSWERS --resume
 
 # a single case
 python run.py "/path/to/cases/7" --out ANSWERS
@@ -91,7 +92,7 @@ python tests/test_offline.py
 python viewer.py ANSWERS        # -> ANSWERS/index.html
 ```
 
-Useful options: `--workers 8`, `--model <id>`, `--only 3,23,26`, `--no-review` (faster, less safe), `--public-cutoff`.
+Useful options: `--workers 8`, `--model <id>`, `--only 3,23,26`, `--resume` (skip answered cases; batches merge into one manifest), `--no-review` (faster, less safe), `--public-cutoff`.
 
 Environment variables (see `.env.example`):
 

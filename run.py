@@ -80,6 +80,7 @@ def main():
     ap.add_argument("--no-review", action="store_true", help="skip the independent reviewer (faster, less safe)")
     ap.add_argument("--public-cutoff", action="store_true", help="dev mode: hide events after the escalation point")
     ap.add_argument("--only", default="", help="comma-separated case folder names to run")
+    ap.add_argument("--resume", action="store_true", help="skip cases that already have a successful result in --out")
     args = ap.parse_args()
 
     load_dotenv()
@@ -91,6 +92,17 @@ def main():
         sys.exit(f"No cases found under {args.cases}")
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    if args.resume:
+        def _done(c: Path) -> bool:
+            name = c.stem if c.is_file() else c.name
+            aid = str(int(name)) if name.isdigit() else name
+            return (out / aid / "result.json").exists()
+        skipped = [c.name for c in cases if _done(c)]
+        cases = [c for c in cases if not _done(c)]
+        if skipped:
+            print(f"--resume: skipping {len(skipped)} case(s) already answered: {', '.join(skipped)}")
+        if not cases:
+            print("Nothing left to run.")
     started = datetime.now(timezone.utc).isoformat()
     print(f"Running {len(cases)} case(s) with {args.workers} workers -> {out}/", flush=True)
 
@@ -103,11 +115,26 @@ def main():
             mark = "ok " if r["ok"] else "ERR"
             print(f"[{len(results)}/{len(cases)}] {mark} {r['case']}: {r.get('decision', '')} {r.get('summary') or r.get('error', '')}"[:220], flush=True)
 
-    results.sort(key=lambda r: (0, int(r["case"])) if r["case"].isdigit() else (1, r["case"]))
-    manifest = {"started_utc": started, "finished_utc": datetime.now(timezone.utc).isoformat(), "git_commit": git_commit(), "code_sha256": code_fingerprint(),
-                "cases_path": str(args.cases), "model_preference": args.model or os.environ.get("DESK_MODELS") or "default",
-                "review": not args.no_review, "public_cutoff": args.public_cutoff,
-                "sim_fail_rate": os.environ.get("DESK_SIM_FAIL_RATE", "0"), "results": results}
+    batch = {"started_utc": started, "finished_utc": datetime.now(timezone.utc).isoformat(), "git_commit": git_commit(),
+             "code_sha256": code_fingerprint(), "cases_path": str(args.cases),
+             "model_preference": args.model or os.environ.get("DESK_MODELS") or "default", "review": not args.no_review,
+             "public_cutoff": args.public_cutoff, "sim_fail_rate": os.environ.get("DESK_SIM_FAIL_RATE", "0"),
+             "cases": [r["case"] for r in results]}
+    # Merge with earlier batches written to the same --out folder (batched or resumed runs).
+    batches, merged = [], {}
+    prev_path = out / "run_manifest.json"
+    if prev_path.exists():
+        try:
+            prev = json.loads(prev_path.read_text())
+            batches = prev.get("batches") or []
+            merged = {r["case"]: r for r in prev.get("results") or []}
+        except Exception:  # noqa: BLE001
+            pass
+    batches.append(batch)
+    merged.update({r["case"]: r for r in results})
+    results = sorted(merged.values(), key=lambda r: (0, int(r["case"])) if r["case"].isdigit() else (1, r["case"]))
+    manifest = {**batch, "started_utc": batches[0]["started_utc"], "batches": batches, "results": results}
+    manifest.pop("cases", None)
     (out / "run_manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     lines = ["# Run summary", "", f"Commit `{manifest['git_commit']}` · code sha256 `{manifest['code_sha256'][:16]}` · started {started} · {len(results)} cases", "",
              "| Case | Decision | Reviewer-approved | Status |", "|---|---|---|---|"]
