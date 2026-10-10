@@ -147,6 +147,24 @@ def test_failed_send_recovers_to_human():
         os.environ.pop("DESK_SIM_FAIL_CHANNELS")
 
 
+def test_transient_failure_retried_then_recorded():
+    from deskagent.pipeline import execute
+    from deskagent.tools import DeskTools, ToolError
+
+    class Flaky(DeskTools):
+        calls = 0
+
+        def send_message(self, **kw):
+            Flaky.calls += 1
+            if Flaky.calls < 3:
+                raise ToolError("gateway timeout", transient=True)
+            return {"status": "sent", "message_id": "MSG-T-01"}
+
+    ex = execute({"actions": [{"tool": "send_message", "to_name": "x", "channel": "Email", "body": "hi", "purpose": "p"}]},
+                 Flaky("T", ["Email"], []))
+    assert ex[0]["status"] == "done" and ex[0]["attempts"] == 3 and len(ex[0]["recovered_after"]) == 2 and "error" not in ex[0]
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

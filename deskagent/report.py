@@ -126,6 +126,8 @@ def reasoning_md(res: dict) -> str:
             line += f" — {json.dumps({k: v for k, v in e['result'].items() if k != 'handover'})}"
         if e.get("error"):
             line += f" — ERROR: {e['error']}"
+        if e.get("recovered_after"):
+            line += f" — recovered after transient error(s): {'; '.join(e['recovered_after'])}"
         out.append(line)
     if not res["executed"]:
         out.append("- No tool calls (hold / no action).")

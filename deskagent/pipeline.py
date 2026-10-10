@@ -136,13 +136,17 @@ def execute(plan: dict, tools: DeskTools) -> list:
             try:
                 rec["result"] = fn(**a)
                 rec["status"] = "done"
+                if rec.pop("error", None):
+                    rec["recovered_after"] = rec.pop("_errors", [])
                 break
             except ToolError as exc:
                 rec["error"] = str(exc)
+                rec.setdefault("_errors", []).append(str(exc))
                 if exc.transient and attempt < 3:
                     time.sleep(0.2 * attempt)
                     continue
                 rec["status"] = "failed"
+                rec.pop("_errors", None)
                 break
         executed.append(rec)
         if rec["status"] == "failed" and tool == "send_message":

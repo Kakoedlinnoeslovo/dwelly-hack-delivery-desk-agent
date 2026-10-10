@@ -50,7 +50,7 @@ def render(answers: Path) -> str:
     by = {k: sum(1 for r in results if r["plan"].get("decision_type") == k) for k in BADGE}
     catches = sum(1 for r in results for rd in r.get("review_rounds") or [] if (rd.get("review") or {}).get("verdict") in ("revise", "escalate_instead"))
     sent = sum(1 for r in results for e in r["executed"] if e["action"].get("tool") == "send_message" and e["status"] == "done")
-    recovered = sum(1 for r in results for e in r["executed"] if e["status"] == "failed")
+    recovered = sum(1 for r in results for e in r["executed"] if e["status"] == "failed" or e.get("recovered_after"))
 
     out = [f"<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
            f"<title>Desk Agent Results</title><style>{CSS}</style></head><body><main>",
@@ -59,7 +59,7 @@ def render(answers: Path) -> str:
            "<div class=stats>"]
     for label, val in [("Act", by["act"]), ("Ask", by["request_information"]), ("Human handover", by["escalate_to_human"]),
                        ("Hold / no action", by["hold_no_action"]), ("Messages sent", sent), ("Reviewer catches", catches),
-                       ("Failed sends recovered", recovered)]:
+                       ("Tool failures recovered", recovered)]:
         out.append(f"<div class=stat><b>{val}</b><span>{label}</span></div>")
     out.append("</div>")
 
