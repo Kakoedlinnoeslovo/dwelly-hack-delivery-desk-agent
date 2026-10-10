@@ -31,6 +31,18 @@ def git_commit() -> str:
         return "unknown"
 
 
+def code_fingerprint() -> str:
+    """sha256 over the agent's source, so results can be tied to the frozen code even
+    when the run happens outside a git checkout."""
+    import hashlib
+    root = Path(__file__).parent
+    h = hashlib.sha256()
+    for p in sorted([root / "run.py"] + list((root / "deskagent").glob("*.py"))):
+        h.update(p.name.encode())
+        h.update(p.read_bytes())
+    return h.hexdigest()
+
+
 def run_one(path: Path, out: Path, args) -> dict:
     t0 = time.time()
     case = None
@@ -92,12 +104,12 @@ def main():
             print(f"[{len(results)}/{len(cases)}] {mark} {r['case']}: {r.get('decision', '')} {r.get('summary') or r.get('error', '')}"[:220], flush=True)
 
     results.sort(key=lambda r: (0, int(r["case"])) if r["case"].isdigit() else (1, r["case"]))
-    manifest = {"started_utc": started, "finished_utc": datetime.now(timezone.utc).isoformat(), "git_commit": git_commit(),
+    manifest = {"started_utc": started, "finished_utc": datetime.now(timezone.utc).isoformat(), "git_commit": git_commit(), "code_sha256": code_fingerprint(),
                 "cases_path": str(args.cases), "model_preference": args.model or os.environ.get("DESK_MODELS") or "default",
                 "review": not args.no_review, "public_cutoff": args.public_cutoff,
                 "sim_fail_rate": os.environ.get("DESK_SIM_FAIL_RATE", "0"), "results": results}
     (out / "run_manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
-    lines = ["# Run summary", "", f"Commit `{manifest['git_commit']}` · started {started} · {len(results)} cases", "",
+    lines = ["# Run summary", "", f"Commit `{manifest['git_commit']}` · code sha256 `{manifest['code_sha256'][:16]}` · started {started} · {len(results)} cases", "",
              "| Case | Decision | Reviewer-approved | Status |", "|---|---|---|---|"]
     for r in results:
         if r["ok"]:
